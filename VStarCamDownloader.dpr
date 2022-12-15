@@ -16,10 +16,13 @@ uses
 {$R *.RES}
 
 Begin
- If Not FindCmdLineSwitch('console', True) Then Begin
-                                                If Not Application.DelayInitialize Or Application.Installing Then Application.Initialize;
-                                                Application.CreateForm(TVStarCamDownloaderService, VStarCamDownloaderService);
-                                                Application.Run;
-                                                End
-   Else StartWithConsole(TVStarCamDownloader);
+ If Not FindCmdLineSwitch('console', True) Then
+ Begin
+   If Not Application.DelayInitialize Or Application.Installing Then
+     Application.Initialize;
+   Application.CreateForm(TVStarCamDownloaderService, VStarCamDownloaderService);
+   Application.Run;
+ End
+ Else
+   StartWithConsole(TVStarCamDownloader);
 End.

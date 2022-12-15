@@ -5,33 +5,33 @@ Interface
 Uses AE.Application.Engine, System.Net.HTTPClientComponent, System.Net.URLClient, System.Net.HttpClient, System.SysUtils;
 
 Type
- TSDCardStatus = (sdNotPresent, sdIdle, sdRecording, sdFileSystemError, sdFormatting, sdCantMount);
+  TSDCardStatus = (sdNotPresent, sdIdle, sdRecording, sdFileSystemError, sdFormatting, sdCantMount);
 
- TDownloaderEngine = Class(TAEApplicationEngine)
- strict private
-  _authheader: TNameValuePair;
-  _cameraname: String;
-  _httpclient: TNetHTTPClient;
-  _sdstatus: TSDCardStatus;
-  _settingscameraname: String;
-  Function HTTPGet(Const inURL: String; Const inHeaders: TArray<TNameValuePair> = nil): IHTTPResponse;
-  Function CameraName: String;
-  Function DownloadFolder: String;
-  Function DownloadSpeed(Const inSizeInBytes, inTimeInMilliseconds: UInt64): String;
-  Function EnableRecord(Const inRecordEnabled: Boolean): Boolean;
-  Function FormatSDCard: Boolean;
-  Function GetFileNames: TArray<String>;
-  Function SuccessfulHTTP(Const inResponse: IHTTPResponse; Const inAction: String): Boolean;
-  Function UpdateCameraInfo(Const inLogInfo: Boolean = True): Boolean;
- strict protected
-  Procedure BeforeWork; Override;
-  Procedure WorkCycle; Override;
-  Procedure Creating; Override;
-  Procedure Destroying; Override;
-  Procedure Log(inString: String); Override;
- public
-  Procedure SetCameraName(Const inCameraSettingsName: String);
- End;
+  TDownloaderEngine = Class(TAEApplicationEngine)
+  strict private
+    _authheader: TNameValuePair;
+    _cameraname: String;
+    _httpclient: TNetHTTPClient;
+    _sdstatus: TSDCardStatus;
+    _settingscameraname: String;
+    Function HTTPGet(Const inURL: String; Const inHeaders: TArray<TNameValuePair> = nil): IHTTPResponse;
+    Function CameraName: String;
+    Function DownloadFolder: String;
+    Function DownloadSpeed(Const inSizeInBytes, inTimeInMilliseconds: UInt64): String;
+    Function EnableRecord(Const inRecordEnabled: Boolean): Boolean;
+    Function FormatSDCard: Boolean;
+    Function GetFileNames: TArray<String>;
+    Function SuccessfulHTTP(Const inResponse: IHTTPResponse; Const inAction: String): Boolean;
+    Function UpdateCameraInfo(Const inLogInfo: Boolean = True): Boolean;
+  strict protected
+    Procedure BeforeWork; Override;
+    Procedure WorkCycle; Override;
+    Procedure Creating; Override;
+    Procedure Destroying; Override;
+    Procedure Log(inString: String); Override;
+  public
+    Procedure SetCameraName(Const inCameraSettingsName: String);
+  End;
 
 Implementation
 
@@ -42,249 +42,326 @@ Uses System.Generics.Collections, System.Diagnostics, uSettings, System.DateUtil
 
 Procedure TDownloaderEngine.BeforeWork;
 Begin
- inherited;
+  inherited;
 
- _authheader.Name := 'Authorization';
- _authheader.Value := 'Basic ' + TNetEncoding.Base64.Encode('admin:' + Settings.Camera[_settingscameraname].Password);
+  // Create the authorization header which is required to download recorded files
+  _authheader.Name := 'Authorization';
+  _authheader.Value := 'Basic ' + TNetEncoding.Base64.Encode('admin:' + Settings.Camera[_settingscameraname].Password);
 End;
 
 Function TDownloaderEngine.CameraName: String;
 Begin
- If _cameraname.IsEmpty Then Result := _settingscameraname
-   Else Result := _cameraname;
+  If _cameraname.IsEmpty Then
+    Result := _settingscameraname
+  Else
+    Result := _cameraname;
 End;
 
 Procedure TDownloaderEngine.Creating;
 Begin
- inherited;
+  inherited;
 
- _httpclient := TNetHTTPClient.Create(nil);
- _settingscameraname := '';
+  _httpclient := TNetHTTPClient.Create(nil);
+  _settingscameraname := '';
 End;
 
 Procedure TDownloaderEngine.Destroying;
 Begin
- If Assigned(_httpclient) Then FreeAndNil(_httpclient);
+  FreeAndNil(_httpclient);
 
- inherited;
+  inherited;
 End;
 
 Function TDownloaderEngine.DownloadFolder: String;
 Begin
- Result := IncludeTrailingPathDelimiter(Settings.DownloadLocation) + Self.CameraName;
+  // Helper to assemble the folder name where THIS engine is going to place recordings
+
+  Result := IncludeTrailingPathDelimiter(Settings.DownloadLocation) + Self.CameraName;
 End;
 
 Function TDownloaderEngine.DownloadSpeed(Const inSizeInBytes, inTimeInMilliseconds: UInt64): String;
 Begin
- If inSizeInBytes >= 1073741824 Then Result := FormatFloat('0.#', inSizeInBytes / 1073741824 / inTimeInMilliseconds * 1000) + ' GB/s'
-   Else
- If inSizeInBytes >= 1048576 Then Result := FormatFloat('0.#', inSizeInBytes / 1048576 / inTimeInMilliseconds * 1000) + ' MB/s'
-   Else
- If inSizeInBytes >= 1024 Then Result := FormatFloat('0.#', inSizeInBytes / 1024 / inTimeInMilliseconds * 1000) + ' kb/s'
-   Else Result := FormatFloat('0.#', inSizeInBytes / inTimeInMilliseconds * 1000) + ' b/s'
+  // Calculate the transfer speed from file size and time spent and format it
+
+  If inSizeInBytes >= 1073741824 Then
+    Result := FormatFloat('0.#', inSizeInBytes / 1073741824 / inTimeInMilliseconds * 1000) + ' GB/s'
+  Else If inSizeInBytes >= 1048576 Then
+    Result := FormatFloat('0.#', inSizeInBytes / 1048576 / inTimeInMilliseconds * 1000) + ' MB/s'
+  Else If inSizeInBytes >= 1024 Then
+    Result := FormatFloat('0.#', inSizeInBytes / 1024 / inTimeInMilliseconds * 1000) + ' kb/s'
+  Else
+    Result := FormatFloat('0.#', inSizeInBytes / inTimeInMilliseconds * 1000) + ' b/s'
 End;
 
 Function TDownloaderEngine.EnableRecord(Const inRecordEnabled: Boolean): Boolean;
 Var
- response: IHTTPResponse;
- urlbool, logbool: String;
+  response: IHTTPResponse;
+  urlbool, logbool: String;
 Begin
- If inRecordEnabled Then Begin
-                         urlbool := '1';
-                         logbool := 'enable';
-                         End
-   Else Begin
-        urlbool := '0';
-        logbool := 'disable';
-        End;
- Log(logbool + ' SD card recording...');
- response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/set_alarm.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password + '&record=' + urlbool);
- Result := SuccessfulHTTP(response, logbool + ' SD card recording');
- If Not Result Then Exit;
+  // Enable or disable SD card recording
 
- If Not inRecordEnabled Then While _sdstatus <> sdIdle Do
-                              Begin
-                               If Self.Terminated Then Abort;
-                               Sleep(1000);
-                               Self.UpdateCameraInfo(False);
-                              End;
- Log(logbool + ' SD card recording successful.');
+  If inRecordEnabled Then
+  Begin
+    urlbool := '1';
+    logbool := 'enable';
+  End
+  Else
+  Begin
+    urlbool := '0';
+    logbool := 'disable';
+  End;
+
+  Log(logbool + ' SD card recording...');
+  response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/set_alarm.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password + '&record=' + urlbool);
+  Result := SuccessfulHTTP(response, logbool + ' SD card recording');
+
+  If Not Result Then
+    Exit;
+
+  // When disabling recording, wait for the currect recording to stop before returning, otherwise we might corrupt the downloaded data
+  If Not inRecordEnabled Then
+    While _sdstatus <> sdIdle Do
+    Begin
+      If Self.Terminated Then
+        Abort;
+      Sleep(1000);
+      Self.UpdateCameraInfo(False);
+    End;
+
+  Log(logbool + ' SD card recording successful.');
 End;
 
 Function TDownloaderEngine.FormatSDCard: Boolean;
 Var
- response: IHTTPResponse;
+  response: IHTTPResponse;
 Begin
- Log('Starting to format SD card...');
- response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/set_formatsd.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
- Result := SuccessfulHTTP(response, 'format SD card');
- If Not Result Then Exit;
+  // Format the SD card, removing all files on it
 
- Sleep(1000);
- Self.UpdateCameraInfo(False);
- While _sdstatus = sdFormatting Do
+  Log('Starting to format SD card...');
+  response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/set_formatsd.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
+  Result := SuccessfulHTTP(response, 'format SD card');
+
+  If Not Result Then
+    Exit;
+
+  Sleep(1000);
+
+  Self.UpdateCameraInfo(False);
+  While _sdstatus = sdFormatting Do
   Begin
-   If Self.Terminated Then Abort;
-   Sleep(1000);
-   Self.UpdateCameraInfo(False);
+    If Self.Terminated Then
+      Abort;
+    Sleep(1000);
+    Self.UpdateCameraInfo(False);
   End;
- Log('SD card formatted successfully.');
+
+  Log('SD card formatted successfully.');
 End;
 
 Function TDownloaderEngine.GetFileNames: TArray<String>;
 Var
- response: IHTTPResponse;
- filelist: TList<String>;
- s: String;
+  response: IHTTPResponse;
+  filelist: TList<String>;
+  s: String;
 Begin
- Log('Starting to download recorded file list...');
+  // List all files on the SD card which has to be downloaded
 
- filelist := TList<String>.Create;
- Try
-  response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/get_record_file.cgi?PageSize=10000&loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
-  If Not SuccessfulHTTP(response, 'get recorded file list') Then Exit;
+  Log('Starting to download recorded file list...');
 
-  For s In response.ContentAsString.Split([sLineBreak]) Do
-   If s.StartsWith('record_name0[') Then filelist.Add(s.Substring(s.IndexOf('"') + 1, s.Length - s.IndexOf('"') - 4));
+  filelist := TList<String>.Create;
+  Try
+    response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/get_record_file.cgi?PageSize=10000&loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
 
-  Log('File list downladed successfully.');
- Finally
-  Result := filelist.ToArray;
-  filelist.Free;
- End;
+    If Not SuccessfulHTTP(response, 'get recorded file list') Then
+      Exit;
+
+    For s In response.ContentAsString.Split([sLineBreak]) Do
+      If s.StartsWith('record_name0[') Then
+        filelist.Add(s.Substring(s.IndexOf('"') + 1, s.Length - s.IndexOf('"') - 4));
+
+    Log('File list downladed successfully.');
+  Finally
+    Result := filelist.ToArray;
+    filelist.Free;
+  End;
 End;
 
 Function TDownloaderEngine.HTTPGet(Const inURL: String; Const inHeaders: TArray<TNameValuePair> = nil): IHTTPResponse;
 Var
- failcount: Integer;
+  failcount: Integer;
 Begin
- failcount := 0;
+  // Perform the HTTP GET command. Retry 4 times with a 3 second delay before considering it failed.
 
- Repeat
-  Try
-   Result := _httpclient.Get(inURL, nil, inHeaders);
+  failcount := 0;
 
-   Exit;
-  Except
-   On E:Exception Do Begin
-                     If failcount = 4 Then Raise;
+  Repeat
+    Try
+      Result := _httpclient.Get(inURL, nil, inHeaders);
 
-                     HandleException(E, '#' + failcount.ToString + ' getting URL ' + inURL);
-                     Inc(failcount);
-                     Sleep(3000);
-                     End;
-  End;
- Until False;
+      Exit;
+    Except
+      On E:Exception Do
+      Begin
+        If failcount = 4 Then
+          Raise;
+
+        HandleException(E, '#' + failcount.ToString + ' getting URL ' + inURL);
+        Inc(failcount);
+        Sleep(3000);
+      End;
+    End;
+  Until False;
 End;
 
 Procedure TDownloaderEngine.Log(inString: String);
 Begin
- inherited Log(Self.CameraName + ' ' + inString);
+  inherited Log(Self.CameraName + ' ' + inString);
 End;
 
 Procedure TDownloaderEngine.SetCameraName(Const inCameraSettingsName: String);
 Begin
- _settingscameraname := inCameraSettingsName;
+  _settingscameraname := inCameraSettingsName;
 End;
 
 Function TDownloaderEngine.SuccessfulHTTP(Const inResponse: IHTTPResponse; Const inAction: String): Boolean;
 Begin
- Result := Assigned(inResponse) And (inResponse.StatusCode = 200);
- If Not Assigned(inResponse) Then Log('Could not ' + inAction + ', no response from camera');
- If inResponse.StatusCode <> 200 Then Log('Could not ' + inAction + ', camera reported: ' + inResponse.StatusCode.ToString + ' ' + inResponse.StatusText);
+  // Helper to determine if a HTTP call was successful or not. Also put the entries in the log
+
+  Result := Assigned(inResponse) And (inResponse.StatusCode = 200);
+
+  If Not Assigned(inResponse) Then
+    Log('Could not ' + inAction + ', no response from camera');
+  If inResponse.StatusCode <> 200 Then
+    Log('Could not ' + inAction + ', camera reported: ' + inResponse.StatusCode.ToString + ' ' + inResponse.StatusText);
 End;
 
 Function TDownloaderEngine.UpdateCameraInfo(Const inLogInfo: Boolean = True): Boolean;
 Var
- response: IHTTPResponse;
- s, key, value: String;
- sdsize, sdfree: Word;
+  response: IHTTPResponse;
+  s, key, value: String;
+  sdsize, sdfree: Word;
 Begin
- Result := False;
+  Result := False;
 
- If inLogInfo Then Log('Attempting to download camera information...');
- _cameraname := '';
- _sdstatus := sdNotPresent;
- response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/get_status.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
+  If inLogInfo Then
+    Log('Attempting to download camera information...');
 
- If Not SuccessfulHTTP(response, 'get camera information') Then Exit;
+  _cameraname := '';
+  _sdstatus := sdNotPresent;
+  response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/get_status.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
 
- For s In response.ContentAsString.Split([sLineBreak]) Do
+  If Not SuccessfulHTTP(response, 'get camera information') Then
+    Exit;
+
+  For s In response.ContentAsString.Split([sLineBreak]) Do
   Begin
-   key := s.Substring(0, s.IndexOf('=')).Replace('var ', '');
-   value := s.Substring(s.IndexOf('=') + 1, s.Length - s.IndexOf('=') - 2);
-   If key = 'alias' Then _cameraname := value.Substring(1, value.Length - 2)
-     Else
-   If key = 'sdtotal' Then sdsize := Word.Parse(value)
-     Else
-   If key = 'sdfree' Then sdfree := Word.Parse(value)
-     Else
-   If key = 'sdstatus' Then _sdstatus := TSDCardStatus(Integer.Parse(value));
+    key := s.Substring(0, s.IndexOf('=')).Replace('var ', '');
+    value := s.Substring(s.IndexOf('=') + 1, s.Length - s.IndexOf('=') - 2);
+    If key = 'alias' Then
+      _cameraname := value.Substring(1, value.Length - 2)
+    Else If key = 'sdtotal' Then
+      sdsize := Word.Parse(value)
+    Else If key = 'sdfree' Then
+      sdfree := Word.Parse(value)
+    Else If key = 'sdstatus' Then
+      _sdstatus := TSDCardStatus(Integer.Parse(value));
   End;
 
- Result := True;
- If inLogInfo Then EXit;
+  Result := True;
 
- s := Self.CameraName + ' SD card ';
- Case _sdstatus Of
-  sdIdle, sdRecording: Begin
-                       If _sdstatus = sdIdle Then s := s + 'idle'
-                         Else s := s + 'recording';
-                       s := s + ' ' + sdfree.ToString + ' MB / ' + sdsize.ToString + ' MB free (' + FormatFloat('0.##', sdfree * 100 / sdsize) + '%)';
-                       End;
-  sdNotPresent: s := s + 'not present';
-  sdFileSystemError: s := s + 'file system error';
-  sdFormatting: s := s + 'formatting';
-  sdCantMount: s := s + 'cannot be mounted';
- End;
- Log(s);
+  If inLogInfo Then
+    Exit;
+
+  s := Self.CameraName + ' SD card ';
+  Case _sdstatus Of
+    sdIdle, sdRecording:
+      Begin
+        If _sdstatus = sdIdle Then
+          s := s + 'idle'
+        Else
+          s := s + 'recording';
+
+        s := s + ' ' + sdfree.ToString + ' MB / ' + sdsize.ToString + ' MB free (' + FormatFloat('0.##', sdfree * 100 / sdsize) + '%)';
+      End;
+    sdNotPresent:
+      s := s + 'not present';
+    sdFileSystemError:
+      s := s + 'file system error';
+    sdFormatting:
+      s := s + 'formatting';
+    sdCantMount:
+      s := s + 'cannot be mounted';
+  End;
+
+  Log(s);
 End;
 
 Procedure TDownloaderEngine.WorkCycle;
 Var
- s: String;
- filelist: TArray<String>;
- count: Integer;
- response: IHTTPResponse;
- stopwatch: TStopWatch;
- buffer: TBytes;
+  s: String;
+  filelist: TArray<String>;
+  count: Integer;
+  response: IHTTPResponse;
+  stopwatch: TStopWatch;
+  buffer: TBytes;
 Begin
- inherited;
+  inherited;
 
- If DaysBetween(Now, Settings.Camera[_settingscameraname].LastDownload) >= 1 Then Begin
-                                                                                  Self.UpdateCameraInfo;
-                                                                                  filelist := Self.GetFileNames;
-                                                                                  If Length(filelist) = 0 Then Begin
-                                                                                                               Log('There are no files to be downloaded at this time.');
-                                                                                                               Settings.Camera[_settingscameraname].LastDownload := Now;
-                                                                                                               Exit;
-                                                                                                               End;
-                                                                                  If Not EnableRecord(False) Then Exit;
-                                                                                  Try
-                                                                                   count := 0;
-                                                                                   For s In filelist Do
-                                                                                    Begin
-                                                                                     If Not TDirectory.Exists(Self.DownloadFolder) Then TDirectory.CreateDirectory(Self.DownloadFolder);
-                                                                                     Inc(count);
-                                                                                     If Not TFile.Exists(Self.DownloadFolder + '\' + s) Then Begin
-                                                                                                                                             Log('Downloading file ' + count.ToString + '/' + Length(filelist).ToString + ': ' + s);
-                                                                                                                                             stopwatch := TStopWatch.StartNew;
-                                                                                                                                             response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/record/' + s, [_authheader]);
-                                                                                                                                             stopwatch.Stop;
-                                                                                                                                             If Not SuccessfulHTTP(response, 'download file') Or (response.ContentLength <= 0) Then Continue;
-                                                                                                                                             SetLength(buffer, response.ContentLength);
-                                                                                                                                             response.ContentStream.Read(buffer, Length(buffer));
-                                                                                                                                             TFile.WriteAllBytes(Self.DownloadFolder + '\' + s, buffer);
-                                                                                                                                             Log(response.ContentLength.ToString + ' bytes were downloaded in ' + Integer(stopwatch.ElapsedMilliseconds Div 1000).ToString + ' seconds. Transfer speed was ' + DownloadSpeed(response.ContentLength, stopwatch.ElapsedMilliseconds));
-                                                                                                                                             End
-                                                                                       Else Log(s + ' is not going to be downloaded as it already seems to exist');
-                                                                                     If Self.Terminated Then Exit;
-                                                                                    End;
-                                                                                   If FormatSDCard Then Settings.Camera[_settingscameraname].LastDownload := Now;
-                                                                                  Finally
-                                                                                   EnableRecord(True);
-                                                                                  End;
-                                                                                  End;
+  // Download once every 24 hours
+
+  If DaysBetween(Now, Settings.Camera[_settingscameraname].LastDownload) < 1 Then
+    Exit;
+
+  Self.UpdateCameraInfo;
+  filelist := Self.GetFileNames;
+
+  If Length(filelist) = 0 Then
+  Begin
+    Log('There are no files to be downloaded at this time.');
+    Settings.Camera[_settingscameraname].LastDownload := Now;
+    Exit;
+  End;
+
+  If Not EnableRecord(False) Then
+    Exit;
+
+  Try
+    count := 0;
+
+    For s In filelist Do
+    Begin
+      If Not TDirectory.Exists(Self.DownloadFolder) Then
+        TDirectory.CreateDirectory(Self.DownloadFolder);
+
+      Inc(count);
+      If Not TFile.Exists(Self.DownloadFolder + '\' + s) Then
+      Begin
+        Log('Downloading file ' + count.ToString + '/' + Length(filelist).ToString + ': ' + s);
+
+        stopwatch := TStopWatch.StartNew;
+        response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/record/' + s, [_authheader]);
+        stopwatch.Stop;
+
+        If Not SuccessfulHTTP(response, 'download file') Or (response.ContentLength <= 0) Then
+          Continue;
+
+        SetLength(buffer, response.ContentLength);
+        response.ContentStream.Read(buffer, Length(buffer));
+        TFile.WriteAllBytes(Self.DownloadFolder + '\' + s, buffer);
+        Log(response.ContentLength.ToString + ' bytes were downloaded in ' + Integer(stopwatch.ElapsedMilliseconds Div 1000).ToString + ' seconds. Transfer speed was ' + DownloadSpeed(response.ContentLength, stopwatch.ElapsedMilliseconds));
+      End
+      Else
+        Log(s + ' is not going to be downloaded as it already seems to exist');
+
+      If Self.Terminated Then
+        Exit;
+    End;
+
+    If FormatSDCard Then
+      Settings.Camera[_settingscameraname].LastDownload := Now;
+  Finally
+    EnableRecord(True);
+  End;
 End;
 
 End.

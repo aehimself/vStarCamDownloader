@@ -1,5 +1,4 @@
 object VStarCamDownloaderService: TVStarCamDownloaderService
-  OldCreateOrder = False
   AllowPause = False
   DisplayName = 'VStarCam Downloader'
   AfterInstall = ServiceAfterInstall
