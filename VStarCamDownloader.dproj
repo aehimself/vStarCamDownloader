@@ -137,11 +137,6 @@
         <DCCReference Include="uVStarCamDownloader.pas"/>
         <DCCReference Include="uDownloaderEngine.pas"/>
         <DCCReference Include="uSettings.pas"/>
-        <DCCReference Include="..\_DelphiComponents\AEFramework\AE.Application.Engine.pas"/>
-        <DCCReference Include="..\_DelphiComponents\AEFramework\AE.Application.Helper.pas"/>
-        <DCCReference Include="..\_DelphiComponents\AEFramework\AE.Application.Settings.pas"/>
-        <DCCReference Include="..\_DelphiComponents\AEFramework\AE.Application.Application.pas"/>
-        <DCCReference Include="..\_DelphiComponents\AEFramework\AE.Application.Console.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -185,7 +180,19 @@
                 </DeployFile>
                 <DeployFile LocalName="Win32\Debug\VStarCamDownloader.exe" Configuration="Debug" Class="ProjectOutput"/>
                 <DeployFile LocalName="Win64\Debug\VStarCamDownloader.exe" Configuration="Debug" Class="ProjectOutput"/>
+                <DeployFile LocalName="Win64\Debug\VStarCamDownloader.exe" Configuration="Debug" Class="ProjectOutput">
+                    <Platform Name="Win64">
+                        <RemoteName>VStarCamDownloader.exe</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="Win64\Debug\VStarCamDownloader.rsm" Configuration="Debug" Class="DebugSymbols"/>
+                <DeployFile LocalName="Win64\Debug\VStarCamDownloader.rsm" Configuration="Debug" Class="DebugSymbols">
+                    <Platform Name="Win64">
+                        <RemoteName>VStarCamDownloader.rsm</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployClass Name="AdditionalDebugSymbols">
                     <Platform Name="iOSSimulator">
                         <Operation>1</Operation>
