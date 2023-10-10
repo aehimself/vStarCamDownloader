@@ -1,4 +1,4 @@
-{
+﻿{
   VStarcamDownloader © 2022 by Akos Eigler is licensed under CC BY 4.0.
   To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/
 
@@ -15,14 +15,18 @@ Uses AE.Application.Engine, System.Net.HTTPClientComponent, System.Net.URLClient
 Type
   TSDCardStatus = (sdNotPresent, sdIdle, sdRecording, sdFileSystemError, sdFormatting, sdCantMount);
 
+  TAuthMode = (amNone, amURL, amHeader);
+
   TDownloaderEngine = Class(TAEApplicationEngine)
   strict private
     _authheader: TNameValuePair;
     _cameraname: String;
+    _cameratime: TDateTime;
     _httpclient: TNetHTTPClient;
+    _lasttimecheck: TDateTime;
     _sdstatus: TSDCardStatus;
     _settingscameraname: String;
-    Function HTTPGet(Const inURL: String; Const inHeaders: TArray<TNameValuePair> = nil): IHTTPResponse;
+    Function HTTPGet(inURL: String; Const inAuthMode: TAuthMode = amURL): IHTTPResponse;
     Function CameraName: String;
     Function DownloadFolder: String;
     Function DownloadSpeed(Const inSizeInBytes, inTimeInMilliseconds: UInt64): String;
@@ -46,7 +50,7 @@ Implementation
 // Play: "C:\Program Files\VideoLAN\VLC\vlc.exe" --demux=h264 -vvv 20210627173932_010.h26
 // Convert: C:\Users\aehim>"C:\Program Files\VideoLAN\VLC\vlc.exe" -I dummy --demux=h264 -vvv 20210627173932_010.h26 --sout=#transcode{vcodec=h264,vb=1024}:standard{access=file,mux=ts,dst=MyVid.mp4} vlc://quit
 
-Uses System.Generics.Collections, System.Diagnostics, uSettings, System.DateUtils, System.IOUtils, System.NetEncoding;
+Uses System.Generics.Collections, System.Diagnostics, uSettings, System.DateUtils, System.IOUtils, System.NetEncoding, AE.Misc.UnixTimestamp;
 
 Procedure TDownloaderEngine.BeforeWork;
 Begin
@@ -70,6 +74,11 @@ Begin
   inherited;
 
   _httpclient := TNetHTTPClient.Create(nil);
+
+  _cameraname := '';
+  _cameratime := 0;
+  _lasttimecheck := 0;
+  _sdstatus := sdNotPresent;
   _settingscameraname := '';
 End;
 
@@ -120,7 +129,7 @@ Begin
   End;
 
   Log(logbool + ' SD card recording...');
-  response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/set_alarm.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password + '&record=' + urlbool);
+  response := HTTPGet('set_alarm.cgi?record=' + urlbool);
   Result := SuccessfulHTTP(response, logbool + ' SD card recording');
 
   If Not Result Then
@@ -146,7 +155,7 @@ Begin
   // Format the SD card, removing all files on it
 
   Log('Starting to format SD card...');
-  response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/set_formatsd.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
+  response := HTTPGet('set_formatsd.cgi');
   Result := SuccessfulHTTP(response, 'format SD card');
 
   If Not Result Then
@@ -178,7 +187,7 @@ Begin
 
   filelist := TList<String>.Create;
   Try
-    response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/get_record_file.cgi?PageSize=10000&loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
+    response := HTTPGet('get_record_file.cgi?PageSize=10000');
 
     If Not SuccessfulHTTP(response, 'get recorded file list') Then
       Exit;
@@ -194,17 +203,37 @@ Begin
   End;
 End;
 
-Function TDownloaderEngine.HTTPGet(Const inURL: String; Const inHeaders: TArray<TNameValuePair> = nil): IHTTPResponse;
+Function TDownloaderEngine.HTTPGet(inURL: String; Const inAuthMode: TAuthMode = amURL): IHTTPResponse;
 Var
   failcount: Integer;
+  headers: TNetHeaders;
 Begin
-  // Perform the HTTP GET command. Retry 4 times with a 3 second delay before considering it failed.
+  inURL := 'http://' + Settings.Camera[_settingscameraname].Hostname + '/' + inURL;
 
+  Case inAuthMode Of
+    amNone:
+      headers := [];
+    amURL:
+    Begin
+      headers := [];
+
+      If inURL.Contains('?') Then
+        inURL := inURL + '&'
+      Else
+        inURL := inURL + '?';
+
+      inURL := inURL + 'loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password;
+    End;
+    amHeader:
+      headers := [_authheader];
+  End;
+
+  // Perform the HTTP GET command. Retry 4 times with a 3 second delay before considering it failed.
   failcount := 0;
 
   Repeat
     Try
-      Result := _httpclient.Get(inURL, nil, inHeaders);
+      Result := _httpclient.Get(inURL, nil, headers);
 
       Exit;
     Except
@@ -256,7 +285,7 @@ Begin
 
   _cameraname := '';
   _sdstatus := sdNotPresent;
-  response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/get_status.cgi?loginuse=admin&loginpas=' + Settings.Camera[_settingscameraname].Password);
+  response := HTTPGet('get_status.cgi');
 
   If Not SuccessfulHTTP(response, 'get camera information') Then
     Exit;
@@ -272,12 +301,14 @@ Begin
     Else If key = 'sdfree' Then
       sdfree := Word.Parse(value)
     Else If key = 'sdstatus' Then
-      _sdstatus := TSDCardStatus(Integer.Parse(value));
+      _sdstatus := TSDCardStatus(Integer.Parse(value))
+    Else If key = 'now' Then
+      _cameratime := UnixToDate(UInt64.Parse(value));
   End;
 
   Result := True;
 
-  If inLogInfo Then
+  If Not inLogInfo Then
     Exit;
 
   s := Self.CameraName + ' SD card ';
@@ -312,15 +343,33 @@ Var
   response: IHTTPResponse;
   stopwatch: TStopWatch;
   buffer: TBytes;
+  loctime: TDateTime;
 Begin
   inherited;
 
-  // Download once every 24 hours
+  // Check and attempt to fix camera's time every 30 minutes
+  loctime := Now;
+  If MinutesBetween(loctime, _lasttimecheck) >= 30 Then
+  Begin
+    Self.UpdateCameraInfo(False);
 
+    If MinutesBetween(loctime, _cameratime) >= 5 Then
+    Begin
+      response := HTTPGet('set_datetime.cgi?now=' + DateToUnix(loctime).ToString);
+
+      If SuccessfulHTTP(response, 'set time') Then
+        Self.Log('Camera time was off and has been fixed. Camera time: ' + FormatDateTime('yyyy.mm.dd hh:nn:ss', _cameratime) + ', local time: ' + FormatDateTime('yyyy.mm.dd hh:nn:ss', loctime) + ', ' + SecondsBetween(_cameratime, loctime).ToString + ' seconds of difference.');
+    End;
+
+    _lasttimecheck := loctime;
+  End;
+
+  // Download once every 24 hours
   If DaysBetween(Now, Settings.Camera[_settingscameraname].LastDownload) < 1 Then
     Exit;
 
   Self.UpdateCameraInfo;
+
   filelist := Self.GetFileNames;
 
   If Length(filelist) = 0 Then
@@ -347,7 +396,7 @@ Begin
         Log('Downloading file ' + count.ToString + '/' + Length(filelist).ToString + ': ' + s);
 
         stopwatch := TStopWatch.StartNew;
-        response := HTTPGet('http://' + Settings.Camera[_settingscameraname].Hostname + '/record/' + s, [_authheader]);
+        response := HTTPGet('record/' + s, amHeader);
         stopwatch.Stop;
 
         If Not SuccessfulHTTP(response, 'download file') Or (response.ContentLength <= 0) Then
