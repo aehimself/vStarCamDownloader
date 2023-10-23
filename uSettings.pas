@@ -1,4 +1,4 @@
-{
+﻿{
   VStarcamDownloader © 2022 by Akos Eigler is licensed under CC BY 4.0.
   To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/
 
@@ -15,13 +15,13 @@ Uses AE.Application.Setting, AE.Application.Settings, System.JSON, System.Generi
 Type
   TCamera = Class(TAEApplicationSetting)
   strict protected
+    Procedure InternalClear; Override;
     Procedure SetAsJSON(Const inJSON: TJSONObject); Override;
     Function GetAsJSON: TJSONObject; Override;
   public
     Hostname: String;
     Password: String;
-    LastDownload: TDateTime;
-    Constructor Create; Override;
+    UserName: String;
   End;
 
   TSettings = Class(TAEApplicationSettings)
@@ -31,6 +31,7 @@ Type
     Function GetCamera(inCameraName: String): TCamera;
     Function GetCameras: TArray<String>;
   strict protected
+    Procedure InternalClear; Override;
     Procedure SetAsJSON(Const inJSON: TJSONObject); Override;
     Function GetAsJSON: TJSONObject; Override;
   public
@@ -50,8 +51,9 @@ Uses System.SysUtils;
 
 Const
   TXT_HOSTNAME = 'hostname';
-  TXT_PASSWORD = 'password';
   TXT_LASTDOWNLOAD = 'lastdownload';
+  TXT_PASSWORD = 'password';
+  TXT_USERNAME = 'username';
   TXT_CAMERAS = 'cameras';
   TXT_DOWNLOADLOCATION = 'downloadlocation';
 
@@ -59,25 +61,27 @@ Const
 // TCameraInfo
 //
 
-Constructor TCamera.Create;
-Begin
-  inherited;
-
-  Self.Hostname := '';
-  Self.Password := '';
-  Self.LastDownload := 0;
-End;
-
 Function TCamera.GetAsJSON: TJSONObject;
 Begin
  Result := inherited;
 
  If Not Self.Hostname.IsEmpty Then
    Result.AddPair(TXT_HOSTNAME, TJSONString.Create(Self.Hostname));
+
  If Not Self.Password.IsEmpty Then
    Result.AddPair(TXT_PASSWORD, TJSONString.Create(Self.Password));
- If Self.LastDownload > 0 Then
-   Result.AddPair(TXT_LASTDOWNLOAD, TJSONNumber.Create(Self.LastDownload));
+
+ If Self.UserName <> 'admin' Then
+   Result.AddPair(TXT_USERNAME, TJSONString.Create(Self.UserName));
+End;
+
+Procedure TCamera.InternalClear;
+Begin
+  inherited;
+
+  Self.Hostname := '';
+  Self.Password := '';
+  Self.UserName := 'admin';
 End;
 
 Procedure TCamera.SetAsJSON(Const inJSON: TJSONObject);
@@ -86,10 +90,12 @@ Begin
 
   If inJSON.GetValue(TXT_HOSTNAME) <> nil Then
     Self.Hostname := TJSONString(inJSON.GetValue(TXT_HOSTNAME)).Value;
+
   If inJSON.GetValue(TXT_PASSWORD) <> nil Then
     Self.Password := TJSONString(inJSON.GetValue(TXT_PASSWORD)).Value;
-  If inJSON.GetValue(TXT_LASTDOWNLOAD) <> nil Then
-    Self.LastDownload := TJSONNumber(inJSON.GetValue(TXT_LASTDOWNLOAD)).AsDouble;
+
+  if inJSON.GetValue(TXT_USERNAME) <> nil Then
+    Self.UserName := TJSONString(inJSON.GetValue(TXT_USERNAME)).Value;
 End;
 
 //
@@ -101,7 +107,6 @@ Begin
   inherited;
 
   _cameras := TObjectDictionary<String, TCamera>.Create([doOwnsValues]);
-  Self.DownloadLocation := '';
 End;
 
 Destructor TSettings.Destroy;
@@ -145,6 +150,15 @@ Begin
   Result := _cameras.Keys.ToArray;
 End;
 
+Procedure TSettings.InternalClear;
+Begin
+  inherited;
+
+  _cameras.Clear;
+
+  Self.DownloadLocation := '';
+End;
+
 Procedure TSettings.SetAsJSON(Const inJSON: TJSONObject);
 Var
   jp: TJSONPair;
@@ -153,6 +167,7 @@ Begin
 
   If inJSON.GetValue(TXT_DOWNLOADLOCATION) <> nil Then
     Self.DownloadLocation := TJSONString(inJSON.GetValue(TXT_DOWNLOADLOCATION)).Value;
+
   If inJSON.GetValue(TXT_CAMERAS) <> nil Then
     For jp In TJSONObject(inJSON.GetValue(TXT_CAMERAS)) Do
       _cameras.Add(jp.JsonString.Value, TCamera(TCamera.NewFromJSON(jp.JsonValue)));
