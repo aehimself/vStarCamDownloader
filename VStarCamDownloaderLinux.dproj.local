@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>1899.12.30 00:00:00.000.817,=C:\LocalWork\vStarCamDownloader\uVStarCamDownloader.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.783,=C:\LocalWork\vStarCamDownloader\uSettings.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.852,=C:\LocalWork\vStarCamDownloader\uDownloaderEngine.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.999,C:\LocalWork\vStarCamDownloader\VStarCamDownloaderLinux.dproj=C:\Users\aehim\Documents\Embarcadero\Studio\Projects\Project1.dproj</Transaction>
+  </Transactions>
+</BorlandProject>
