@@ -336,27 +336,35 @@ Begin
   If Self.Terminated Then
     Exit;
 
-  If MinutesBetween(Now, _lastwork) < 10 Then
-    Exit;
-
-  s := Self.UpdateCameraInfo;
-
-  _lastwork := Now;
-
-  // Check and attempt to fix camera's time every 30 minutes
-  If MinutesBetween(_lastwork, _cameratime) >= 5 Then
+  If Not _camera.DownloadAll Then
   Begin
-    response := HTTPGet('set_datetime.cgi?now=' + DateToUnix(_lastwork).ToString);
+    If MinutesBetween(Now, _lastwork) < 10 Then
+      Exit;
 
-    If SuccessfulHTTP(response, 'set time') Then
-      Self.Log('Camera time was off and has been readjusted. Camera time: ' + FormatDateTime('yyyy.mm.dd hh:nn:ss', _cameratime) + ', local time: ' + FormatDateTime('yyyy.mm.dd hh:nn:ss', _lastwork) + '.');
+    s := Self.UpdateCameraInfo;
+
+    _lastwork := Now;
+
+    // Check and attempt to fix camera's time every 30 minutes
+    If MinutesBetween(_lastwork, _cameratime) >= 5 Then
+    Begin
+      response := HTTPGet('set_datetime.cgi?now=' + DateToUnix(_lastwork).ToString);
+
+      If SuccessfulHTTP(response, 'set time') Then
+        Self.Log('Camera time was off and has been readjusted. Camera time: ' + FormatDateTime('yyyy.mm.dd hh:nn:ss', _cameratime) + ', local time: ' + FormatDateTime('yyyy.mm.dd hh:nn:ss', _lastwork) + '.');
+    End;
+
+    // Start downloading if the SD card is present and has less than 50% free space
+    If (_sdfreepercent < 0) Or (_sdfreepercent > 50) Then
+      Exit;
+
+    Log(s);
+  End
+  Else
+  Begin
+    Log('Downloading all files as requested by Settings.');
+    _camera.DownloadAll := False;
   End;
-
-  // Start downloading if the SD card is present and has less than 50% free space
-  If (_sdfreepercent < 0) Or (_sdfreepercent > 50) Then
-    Exit;
-
-  Log(s);
 
   // Get the list of files on the SD card
   filelist := Self.GetFileNames;

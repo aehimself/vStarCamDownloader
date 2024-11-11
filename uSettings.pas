@@ -19,6 +19,7 @@ Type
     Procedure SetAsJSON(Const inJSON: TJSONObject); Override;
     Function GetAsJSON: TJSONObject; Override;
   public
+    DownloadAll: Boolean;
     Hostname: String;
     Password: String;
     UserName: String;
@@ -50,6 +51,7 @@ Implementation
 Uses System.SysUtils;
 
 Const
+  TXT_DOWNLOADALL = 'downloadall';
   TXT_HOSTNAME = 'hostname';
   TXT_LASTDOWNLOAD = 'lastdownload';
   TXT_PASSWORD = 'password';
@@ -79,6 +81,7 @@ Procedure TCamera.InternalClear;
 Begin
   inherited;
 
+  Self.DownloadAll := False;
   Self.Hostname := '';
   Self.Password := '';
   Self.UserName := 'admin';
@@ -87,6 +90,9 @@ End;
 Procedure TCamera.SetAsJSON(Const inJSON: TJSONObject);
 Begin
   inherited;
+
+  If inJSON.GetValue(TXT_DOWNLOADALL) <> nil Then
+    Self.DownloadAll := TJSONBool(inJSON.GetValue(TXT_DOWNLOADALL)).AsBoolean;
 
   If inJSON.GetValue(TXT_HOSTNAME) <> nil Then
     Self.Hostname := TJSONString(inJSON.GetValue(TXT_HOSTNAME)).Value;
